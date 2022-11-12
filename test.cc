@@ -35,6 +35,12 @@ public:
         m_current++;
         m_cond.notify_all();
     }
+
+    void relock()
+    {
+        unlock();
+        lock();
+    } 
     
     void debug(const char* prefix)
     {
@@ -46,6 +52,7 @@ class scoped_fifo_lock
 {
 private:
     fifo_mutex* m_mutex = nullptr; 
+    bool m_locked = false;
 public:
     scoped_fifo_lock(fifo_mutex* mutex_ptr)
         : m_mutex(mutex_ptr)
@@ -53,16 +60,46 @@ public:
         if (m_mutex)
         {
             m_mutex->lock();
+            m_locked = true;
         }
     }
+
     ~scoped_fifo_lock()
     {
-        if (m_mutex)
+        if (m_mutex && m_locked)
         {
             m_mutex->unlock();
         }
         m_mutex = nullptr;
+        m_locked = false;
     }
+
+    void relock()
+    {
+        if (m_mutex)
+        {
+            if (m_locked)
+                m_mutex->unlock();
+            m_mutex->lock();
+            m_locked = true;
+        }
+    }
+    
+    void unlock()
+    {
+        if (m_mutex && m_locked)
+            m_mutex->unlock();
+        m_locked = false;
+    }
+    
+    void lock()
+    {
+        if (m_mutex && !m_locked)
+            m_mutex->lock();
+        m_locked = true;
+    }
+
+    bool is_locked() const { return m_locked; }
 };
 
 using namespace std;
@@ -75,7 +112,9 @@ int main (int argc, char** argv)
     for (uint32_t i = 0; i < 5; i++)
     {
         scoped_fifo_lock alock(&mtx);
-        cout << "loop: " << i << endl;
+        cout << "loop: " << i << ", is_locked: " << alock.is_locked() << endl;
         mtx.debug("\tmutex");
+        alock.relock();
+        mtx.debug("\trelock");
     }
 }
